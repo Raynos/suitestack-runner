@@ -1,0 +1,125 @@
+#!/usr/bin/env node
+
+var program = require("commander"),
+    suitestack = require("suitestack"),
+    browserify = require("browserify"),
+    Reporter = require("suitestack-reporter"),
+    exec = require("child_process").exec,
+    fs = require("fs"),
+    path = require("path"),
+    isJsFile = /.js$/
+
+program
+    .version("0.1.0")
+    .usage('[options] <file...>')
+    .option("-n, --node <name>", "Set reporter for node")
+    .option("-j, --jsdom", "Run tests through jsdom")
+    .option("-f, --firefox", "Run tests through firefox")
+    .parse(process.argv)
+
+var uri = path.join(process.cwd(), program.args[0]),
+    files = []
+
+iterateFiles(uri, addToFiles)
+
+if (program.node) {
+    var reporter = Reporter(program.node, suitestack)
+
+    reporter.on("end", checkfirefox)
+
+    console.log("NODE TEST:")
+    files.forEach(requireFile)
+}
+
+function addToFiles(fileName) {
+    files.push(fileName)
+}
+
+function requireFile(fileName) {
+    require(fileName)
+}
+
+function checkfirefox() {
+    if (program.firefox) {
+        var code = 
+            "var suitestack = require('suitestack'),\n" +
+            "   reporter = require('suitestack-reporter')\n" +
+            "\n" +
+            "reporter('mocha-HTML', suitestack)\n" +
+            "\n"
+
+        files.forEach(addToCode)
+
+        //console.log("code", code)
+
+        var bundle = browserify()
+        bundle.addEntry("./fake.js", { body: code })
+        var compiled = bundle.bundle()
+        fs.writeFileSync(path.join(__dirname, "./fake.js"), compiled)
+
+        exec("firefox ./bin/index.html")
+    }
+
+    function addToCode(fileName) {
+        var relative = path.relative(path.dirname(process.cwd()), fileName)
+
+        code += "require('" + relative + "')\n"
+    }
+}
+
+function checkjsdom() {
+    if (program.jsdom) {
+        var jsdom = require("jsdom")
+        var code = 
+            "var suitestack = require('suitestack'),\n" +
+            "   reporter = require('suitestack-reporter')\n" +
+            "\n" +
+            "reporter('mocha-HTML', suitestack)\n" +
+            "\n"
+
+        files.forEach(addToCode)
+
+        //console.log("code", code)
+
+        var bundle = browserify()
+        bundle.addEntry("./fake.js", { body: code })
+        var compiled = bundle.bundle()
+        fs.writeFileSync(path.join(__dirname, "./fake.js"), compiled)
+
+        jsdom.env({
+            html: fs.readFileSync(path.join(__dirname, "./index.html")),
+            src: [compiled],
+            done: extractFromWindow
+        })
+    }
+
+    function addToCode(fileName) {
+        var relative = path.relative(path.dirname(process.cwd()), fileName)
+
+        code += "require('" + relative + "')\n"
+    }
+
+    function extractFromWindow(errors, window) {
+        console.log("errors", errors)  
+        var document = window.document
+        console.log(document.innerHTML)
+    }
+}
+
+function iterateFiles(uri, callback) {
+    var files = fs.readdirSync(uri)
+
+    files.sort().forEach(isDirOrFile)
+
+    function isDirOrFile(fileName) {
+        fileName = path.join(uri, fileName)
+
+        var stat = fs.statSync(fileName)
+
+        if (stat.isDirectory()) {
+            iterateFiles(fileName, callback)
+        } else if (stat.isFile() && isJsFile.test(fileName)) {
+            callback(fileName)
+        }
+    }
+}

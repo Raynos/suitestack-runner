@@ -1,0 +1,43 @@
+{
+    "name": "suitestack-runner",
+    "version": "0.1.0",
+    "description": "A CLI utility to run suitestack tests",
+    "keywords": [],
+    "author": "Raynos <raynos2@gmail.com>",
+    "repository": "git://github.com/Raynos/suitestack-runner.git",
+    "main": "index",
+    "scripts": {
+        "test": "make test"
+    },
+    "homepage": "https://github.com/Raynos/suitestack-runner",
+    "contributors": [
+        {
+            "name": "Jake Verbaten"
+        }
+    ],
+    "bugs": {
+        "url": "https://github.com/Raynos/suitestack-runner/issues",
+        "email": "raynos2@gmail.com"
+    },
+    "licenses": [
+        {
+            "type": "MIT",
+            "url": "http://github.com/raynos/suitestack-runner/raw/master/LICENSE"
+        }
+    ],
+    "engines": {
+        "node": ">=0.4"
+    },
+    "dependencies": {
+        "suitestack-reporter": "0.1.4",
+        "commander": "0.6.0",
+        "browserify": "git://github.com/Raynos/node-browserify.git",
+        "jsdom": "0.2.14"
+    },
+    "devDependencies": {
+        "suitestack": "0.1.4"
+    },
+    "bin": { 
+        "suitestack": "./bin/suitestack" 
+    }
+}
