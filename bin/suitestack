@@ -4,6 +4,7 @@ var program = require("commander"),
     suitestack = require("suitestack"),
     browserify = require("browserify"),
     Reporter = require("suitestack-reporter"),
+    after = require("after"),
     exec = require("child_process").exec,
     fs = require("fs"),
     path = require("path"),
@@ -14,33 +15,87 @@ program
     .usage('[options] <file...>')
     .option("-n, --node <name>", "Set reporter for node")
     .option("-j, --jsdom", "Run tests through jsdom")
-    .option("-f, --firefox", "Run tests through firefox")
+    .option("-b, --browsers <config>", "Run tests through browsers")
+    .option("-t, --testling <config>", "Run testling tests")
     .parse(process.argv)
 
-var uri = path.join(process.cwd(), program.args[0]),
-    files = []
+after.flow([
+    function getFiles(next) {
+        var uri = path.join(process.cwd(), program.args[0]),
+            files = this.files = []
 
-iterateFiles(uri, addToFiles)
+        iterateFiles(uri, addToFiles)
 
-if (program.node) {
-    var reporter = Reporter(program.node, suitestack)
+        next()
 
-    reporter.on("end", checkfirefox)
+        function addToFiles(fileName) {
+            files.push(fileName)
+        }
+    },
+    function node(next) {
+        if (!program.node) {
+            return next()
+        }
 
-    console.log("NODE TEST:")
-    files.forEach(requireFile)
-}
+        var reporter = Reporter(program.node, suitestack)
 
-function addToFiles(fileName) {
-    files.push(fileName)
-}
+        reporter.on("end", next)
 
-function requireFile(fileName) {
-    require(fileName)
-}
+        console.log("NODE TEST:")
+        this.files.forEach(requireFile)
 
-function checkfirefox() {
-    if (program.firefox) {
+        function requireFile(fileName) {
+            require(fileName)
+        }
+    },
+    function testling(next) {
+        if (!program.testling) {
+            return next()
+        }
+
+        var code = 
+            "var suitestack = require('suitestack')\n" +
+            "\n" + 
+            "reporter(suitestack)" +
+            "\n",
+            fakePath = path.join(__dirname, "./fake.js"),
+            relativePath = path.relative(process.cwd(), fakePath)
+
+        this.files.forEach(addToCode)
+
+        code += fs.readFileSync(path.join(__dirname, "../support/reporter.js"))
+            .toString()
+
+        fs.writeFileSync(fakePath, code)
+
+        var config = require(path.join(process.cwd(), program.testling))
+
+        config.files.push(fakePath)
+
+        var cmd = "tar -cf- $(find . -name \*.js) | curl -sSNT- " +
+            "-u " + config.auth + " 'testling.com/?main=" + relativePath +
+            "\&browsers=" + config.browsers.join(",") + "\&noinstrument'"
+
+        console.log("testling cmd", cmd)
+
+        var child = exec(cmd, function (err, stdout, stderr) {
+            console.log(err, stdout, stderr)
+        })
+
+        child.stdout.pipe(process.stdout)
+        child.stderr.pipe(process.stderr)
+
+        function addToCode(fileName) {
+            var relative = path.relative(path.dirname(process.cwd()), fileName)
+
+            code += "require('" + relative + "')\n"
+        }
+    },
+    function browsers() {
+        if (!program.browsers) {
+            return
+        }
+
         var code = 
             "var suitestack = require('suitestack'),\n" +
             "   reporter = require('suitestack-reporter')\n" +
@@ -48,24 +103,28 @@ function checkfirefox() {
             "reporter('mocha-HTML', suitestack)\n" +
             "\n"
 
-        files.forEach(addToCode)
-
-        //console.log("code", code)
+        this.files.forEach(addToCode)
 
         var bundle = browserify()
         bundle.addEntry("./fake.js", { body: code })
         var compiled = bundle.bundle()
         fs.writeFileSync(path.join(__dirname, "./fake.js"), compiled)
 
-        exec("firefox ./bin/index.html")
-    }
+        var config = require(path.join(process.cwd(), program.browsers))
 
-    function addToCode(fileName) {
-        var relative = path.relative(path.dirname(process.cwd()), fileName)
+        Object.keys(config).forEach(runBrowser)
 
-        code += "require('" + relative + "')\n"
+        function addToCode(fileName) {
+            var relative = path.relative(path.dirname(process.cwd()), fileName)
+
+            code += "require('" + relative + "')\n"
+        }
+
+        function runBrowser(name) {
+            exec(config[name] + " ./bin/index.html")
+        }
     }
-}
+], {})
 
 function checkjsdom() {
     if (program.jsdom) {

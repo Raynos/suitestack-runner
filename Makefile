@@ -1,10 +1,14 @@
 test: 
 	./node_modules/.bin/suitestack \
 		--node mocha-Spec \
-		--firefox \
+		--browsers ./browser.json \
+		--testling ./testling.json \
 		./test/integration/
 
-firefox:
-	firefox ./bin/index.html
+testling:
+	tar -cf- bin/fake.js node_modules | curl -sSNT- \
+		-u raynos2@gmail.com:kamasha16 \
+		-m 30 \
+  		'testling.com/?main=bin/fake.js\&browsers=chrome/17.0\&noinstrument'
 
-.PHONY: test firefox
+.PHONY: test testling
